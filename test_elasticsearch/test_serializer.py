@@ -10,6 +10,7 @@ from elasticsearch.exceptions import SerializationError, ImproperlyConfigured
 
 from .test_cases import TestCase, SkipTest
 
+
 class TestJSONSerializer(TestCase):
     def test_datetime_serialization(self):
         self.assertEquals('{"d": "2010-10-01T02:30:00"}', JSONSerializer().dumps({'d': datetime(2010, 10, 1, 2, 30)}))
@@ -32,6 +33,13 @@ class TestJSONSerializer(TestCase):
 
     def test_strings_are_left_untouched(self):
         self.assertEquals("你好", JSONSerializer().dumps("你好"))
+
+    def test_class_serializer(self):
+        class A(object):
+            def to_serializable(self):
+                return {"a": "b"}
+        a = A()
+        self.assertEquals('{"a": "b"}', JSONSerializer().dumps(a))
 
 
 class TestTextSerializer(TestCase):

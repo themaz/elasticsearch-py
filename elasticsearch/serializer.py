@@ -9,6 +9,7 @@ from decimal import Decimal
 from .exceptions import SerializationError, ImproperlyConfigured
 from .compat import string_types
 
+
 class TextSerializer(object):
     mimetype = 'text/plain'
 
@@ -20,6 +21,7 @@ class TextSerializer(object):
             return data
 
         raise SerializationError('Cannot serialize %r into text.' % data)
+
 
 class JSONSerializer(object):
     mimetype = 'application/json'
@@ -45,14 +47,19 @@ class JSONSerializer(object):
             return data
 
         try:
+            serializable_fn = getattr(data, "to_serializable", None)
+            if callable(serializable_fn):
+                data = data.to_dict()
             return json.dumps(data, default=self.default, ensure_ascii=False)
         except (ValueError, TypeError) as e:
             raise SerializationError(data, e)
+
 
 DEFAULT_SERIALIZERS = {
     JSONSerializer.mimetype: JSONSerializer(),
     TextSerializer.mimetype: TextSerializer(),
 }
+
 
 class Deserializer(object):
     def __init__(self, serializers, default_mimetype='application/json'):
@@ -74,4 +81,3 @@ class Deserializer(object):
                 raise SerializationError('Unknown mimetype, unable to deserialize: %s' % mimetype)
 
         return deserializer.loads(s)
-
