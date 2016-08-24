@@ -49,7 +49,7 @@ class JSONSerializer(object):
         try:
             serializable_fn = getattr(data, "to_serializable", None)
             if callable(serializable_fn):
-                data = data.to_dict()
+                data = serializable_fn()
             return json.dumps(data, default=self.default, ensure_ascii=False)
         except (ValueError, TypeError) as e:
             raise SerializationError(data, e)
