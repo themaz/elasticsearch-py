@@ -3,6 +3,14 @@ import urllib3
 from urllib3.exceptions import ReadTimeoutError, SSLError as UrllibSSLError
 import warnings
 
+CA_CERTS = None
+
+try:
+    import certifi
+    CA_CERTS = certifi.where()
+except ImportError:
+    pass
+
 from .base import Connection
 from ..exceptions import ConnectionError, ImproperlyConfigured, ConnectionTimeout, SSLError
 from ..compat import urlencode
@@ -31,12 +39,13 @@ class Urllib3HttpConnection(Connection):
         ``ssl`` module for exact options for your environment).
     :arg ssl_assert_hostname: use hostname verification if not `False`
     :arg ssl_assert_fingerprint: verify the supplied certificate fingerprint if not `None`
-    :arg maxsize: the maximum number of connections which will be kept open to
-        this host.
+    :arg maxsize: the number of connections which will be kept open to this
+        host. See https://urllib3.readthedocs.io/en/1.4/pools.html#api for more
+        information.
     :arg headers: any custom http headers to be add to requests
     """
     def __init__(self, host='localhost', port=9200, http_auth=None,
-            use_ssl=False, verify_certs=False, ca_certs=None, client_cert=None,
+            use_ssl=False, verify_certs=True, ca_certs=None, client_cert=None,
             client_key=None, ssl_version=None, ssl_assert_hostname=None,
             ssl_assert_fingerprint=None, maxsize=10, headers=None, **kwargs):
 
@@ -48,6 +57,7 @@ class Urllib3HttpConnection(Connection):
                 http_auth = ':'.join(http_auth)
             self.headers.update(urllib3.make_headers(basic_auth=http_auth))
 
+        ca_certs = CA_CERTS if ca_certs is None else ca_certs
         pool_class = urllib3.HTTPConnectionPool
         kw = {}
         if use_ssl:
@@ -59,14 +69,17 @@ class Urllib3HttpConnection(Connection):
             })
 
             if verify_certs:
+                if not ca_certs:
+                    raise ImproperlyConfigured("Root certificates are missing for certificate "
+                        "validation. Either pass them in using the ca_certs parameter or "
+                        "install certifi to use it automatically.")
+
                 kw.update({
                     'cert_reqs': 'CERT_REQUIRED',
                     'ca_certs': ca_certs,
                     'cert_file': client_cert,
                     'key_file': client_key,
                 })
-            elif ca_certs:
-                raise ImproperlyConfigured("You cannot pass CA certificates when verify SSL is off.")
             else:
                 warnings.warn(
                     'Connecting to %s using SSL with verify_certs=False is insecure.' % host)
@@ -97,17 +110,17 @@ class Urllib3HttpConnection(Connection):
             duration = time.time() - start
             raw_data = response.data.decode('utf-8')
         except UrllibSSLError as e:
-            self.log_request_fail(method, full_url, body, time.time() - start, exception=e)
+            self.log_request_fail(method, full_url, url, body, time.time() - start, exception=e)
             raise SSLError('N/A', str(e), e)
         except ReadTimeoutError as e:
-            self.log_request_fail(method, full_url, body, time.time() - start, exception=e)
+            self.log_request_fail(method, full_url, url, body, time.time() - start, exception=e)
             raise ConnectionTimeout('TIMEOUT', str(e), e)
         except Exception as e:
-            self.log_request_fail(method, full_url, body, time.time() - start, exception=e)
+            self.log_request_fail(method, full_url, url, body, time.time() - start, exception=e)
             raise ConnectionError('N/A', str(e), e)
 
         if not (200 <= response.status < 300) and response.status not in ignore:
-            self.log_request_fail(method, url, body, duration, response.status, raw_data)
+            self.log_request_fail(method, full_url, url, body, duration, response.status, raw_data)
             self._raise_error(response.status, raw_data)
 
         self.log_request_success(method, full_url, url, body, response.status,
